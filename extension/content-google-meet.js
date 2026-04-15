@@ -620,46 +620,6 @@ function showNotification(extensionStatusJSON) {
     obj.style.cssText = `color: #2A9ACA; ${commonCSS}`
     text.innerHTML = extensionStatusJSON.message
 
-    // Add beta message
-    if (extensionStatusJSON.showBetaMessage) {
-      /** @type {ExtensionMessage} */
-      const messageTeams = {
-        type: "get_platform_status",
-        platform: "teams"
-      }
-      /** @type {ExtensionMessage} */
-      const messageZoom = {
-        type: "get_platform_status",
-        platform: "zoom"
-      }
-
-      chrome.runtime.sendMessage(messageTeams, (responseUntyped) => {
-        const response = /** @type {ExtensionResponse} */ (responseUntyped)
-        const isTeamsEnabled = (response.success) && (response.message === "Enabled")
-
-        chrome.runtime.sendMessage(messageZoom, (responseUntyped) => {
-          const response = /** @type {ExtensionResponse} */ (responseUntyped)
-          const isZoomEnabled = (response.success) && (response.message === "Enabled")
-
-          if (!isTeamsEnabled && !isZoomEnabled) {
-            text.innerHTML += `<br/><br/> <b style="color:orange;">Teams and Zoom transcripts are in beta. <u>Click to open popup and enable.</u></b>`
-            obj.style.cssText += `cursor: pointer;`
-
-            text.addEventListener("click", () => {
-              /** @type {ExtensionMessage} */
-              const message = {
-                type: "open_popup",
-              }
-              chrome.runtime.sendMessage(message, function (responseUntyped) {
-                const response = /** @type {ExtensionResponse} */ (responseUntyped)
-              })
-            })
-          }
-        })
-
-
-      })
-    }
   }
   else {
     obj.style.cssText = `color: orange; ${commonCSS}`

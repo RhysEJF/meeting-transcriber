@@ -6,13 +6,9 @@ window.onload = function () {
   const autoModeRadio = document.querySelector("#auto-mode")
   const manualModeRadio = document.querySelector("#manual-mode")
   const versionElement = document.querySelector("#version")
-  // const notice = document.querySelector("#notice")
-
 
   // Platform Checkboxes
   const googleMeetToggle = /** @type {HTMLInputElement} */ (document.querySelector("#enable-google-meet"))
-  const teamsToggle = /** @type {HTMLInputElement} */ (document.querySelector("#enable-teams"))
-  const zoomToggle = /** @type {HTMLInputElement} */ (document.querySelector("#enable-zoom"))
 
   if (versionElement) {
     versionElement.innerHTML = `v${chrome.runtime.getManifest().version}`
@@ -39,8 +35,8 @@ window.onload = function () {
 
   /**
    * Syncs checkbox UI with actual background script registration status
-   * @param {HTMLInputElement} element 
-   * @param {Platform} platform 
+   * @param {HTMLInputElement} element
+   * @param {Platform} platform
    */
   function syncPlatformStatus(element, platform) {
     /** @type {ExtensionMessage} */
@@ -66,19 +62,7 @@ window.onload = function () {
       chrome.runtime.sendMessage(message, (responseUntyped) => {
         const response = /** @type {ExtensionResponse} */ (responseUntyped)
         if (response.success) {
-          switch (platform) {
-            case "google_meet":
-              chrome.storage.sync.set({ wantGoogleMeet: element.checked }, function () { })
-              break
-            case "teams":
-              chrome.storage.sync.set({ wantTeams: element.checked }, function () { })
-              break
-            case "zoom":
-              chrome.storage.sync.set({ wantZoom: element.checked }, function () { })
-              break
-            default:
-              break
-          }
+          chrome.storage.sync.set({ wantGoogleMeet: element.checked }, function () { })
         }
         else {
           element.checked = !element.checked // Revert on failure
@@ -92,14 +76,4 @@ window.onload = function () {
   if (googleMeetToggle) {
     syncPlatformStatus(googleMeetToggle, "google_meet")
   }
-  if (teamsToggle) {
-    syncPlatformStatus(teamsToggle, "teams")
-  }
-  if (zoomToggle) {
-    syncPlatformStatus(zoomToggle, "zoom")
-  }
-
-  // notice?.addEventListener("click", () => {
-  //   alert("The transcript may not always be accurate and is only intended to aid in improving productivity. It is the responsibility of the user to ensure they comply with any applicable laws/rules.")
-  // })
 }
