@@ -430,53 +430,95 @@ function downloadTranscript(index, isWebhookEnabled) {
 
                 const blob = new Blob([content], { type: "text/plain" })
 
-                // Read the blob as a data URL
-                const reader = new FileReader()
+                // Cross-browser download URL:
+                // - Chrome MV3 runs background.js as a service worker where URL.createObjectURL
+                //   is unavailable, so a data: URL (via FileReader) is used (Chrome accepts it).
+                // - Firefox runs background.js as an event page where URL.createObjectURL is
+                //   available AND downloads.download() rejects data: URLs, so a blob: URL is used
+                //   and revoked once the download reaches a terminal state (revoking it
+                //   synchronously can truncate the saved file).
 
-                // Read the blob
-                reader.readAsDataURL(blob)
+                /**
+                 * @param {string} downloadUrl
+                 * @param {boolean} isBlobUrl
+                 */
+                const startDownload = (downloadUrl, isBlobUrl) => {
+                    /** @param {number} [downloadId] */
+                    const revokeWhenDone = (downloadId) => {
+                        if (!isBlobUrl) {
+                            return
+                        }
+                        if (typeof downloadId !== "number") {
+                            URL.revokeObjectURL(downloadUrl)
+                            return
+                        }
+                        /** @param {any} delta */
+                        const onChanged = (delta) => {
+                            if ((delta.id === downloadId) && delta.state && ((delta.state.current === "complete") || (delta.state.current === "interrupted"))) {
+                                URL.revokeObjectURL(downloadUrl)
+                                chrome.downloads.onChanged.removeListener(onChanged)
+                            }
+                        }
+                        chrome.downloads.onChanged.addListener(onChanged)
+                    }
 
-                // Download as text file, once blob is read
-                reader.onload = function (event) {
-                    if (event.target?.result) {
-                        const dataUrl = event.target.result
+                    // Create a download with the WebExtension downloads API
+                    chrome.downloads.download({
+                        url: downloadUrl,
+                        filename: fileName,
+                        conflictAction: "uniquify"
+                    }).then((downloadId) => {
+                        revokeWhenDone(downloadId)
+                        console.log("Transcript downloaded")
+                        resolve("Transcript downloaded successfully")
 
-                        // Create a download with Chrome Download API
+                        // Increment anonymous transcript generated count to a Google sheet
+                        fetch(`https://script.google.com/macros/s/AKfycbxgUPDKDfreh2JIs8pIC-9AyQJxq1lx9Q1qI2SVBjJRvXQrYCPD2jjnBVQmds2mYeD5nA/exec?version=${chrome.runtime.getManifest().version}&isWebhookEnabled=${isWebhookEnabled}&meetingSoftware=${meeting.meetingSoftware}`, {
+                            mode: "no-cors"
+                        })
+                    }).catch((err) => {
+                        console.error(err)
+                        // Likely an invalid file name. Retry once with a safe default name.
                         chrome.downloads.download({
-                            // @ts-ignore
-                            url: dataUrl,
-                            filename: fileName,
+                            url: downloadUrl,
+                            filename: "TranscripTonic/Transcript.txt",
                             conflictAction: "uniquify"
-                        }).then(() => {
-                            console.log("Transcript downloaded")
-                            resolve("Transcript downloaded successfully")
-
-                            // Increment anonymous transcript generated count to a Google sheet
-                            fetch(`https://script.google.com/macros/s/AKfycbxgUPDKDfreh2JIs8pIC-9AyQJxq1lx9Q1qI2SVBjJRvXQrYCPD2jjnBVQmds2mYeD5nA/exec?version=${chrome.runtime.getManifest().version}&isWebhookEnabled=${isWebhookEnabled}&meetingSoftware=${meeting.meetingSoftware}`, {
-                                mode: "no-cors"
-                            })
-                        }).catch((err) => {
-                            console.error(err)
-                            chrome.downloads.download({
-                                // @ts-ignore
-                                url: dataUrl,
-                                filename: "TranscripTonic/Transcript.txt",
-                                conflictAction: "uniquify"
-                            })
+                        }).then((downloadId) => {
+                            revokeWhenDone(downloadId)
                             console.log("Invalid file name. Transcript downloaded to TranscripTonic directory with simple file name.")
                             resolve("Transcript downloaded successfully with default file name")
-
-                            // Logs anonymous errors to a Google sheet for swift debugging
-                            fetch(`https://script.google.com/macros/s/AKfycbwN-bVkVv3YX4qvrEVwG9oSup0eEd3R22kgKahsQ3bCTzlXfRuaiO7sUVzH9ONfhL4wbA/exec?version=${chrome.runtime.getManifest().version}&code=009&error=${encodeURIComponent(err)}&meetingSoftware=${meeting.meetingSoftware}`, { mode: "no-cors" })
-
-                            // Increment anonymous transcript generated count to a Google sheet
-                            fetch(`https://script.google.com/macros/s/AKfycbxgUPDKDfreh2JIs8pIC-9AyQJxq1lx9Q1qI2SVBjJRvXQrYCPD2jjnBVQmds2mYeD5nA/exec?version=${chrome.runtime.getManifest().version}&isWebhookEnabled=${isWebhookEnabled}&meetingSoftware=${meeting.meetingSoftware}`, {
-                                mode: "no-cors"
-                            })
+                        }).catch((err2) => {
+                            if (isBlobUrl) {
+                                URL.revokeObjectURL(downloadUrl)
+                            }
+                            reject({ errorCode: "009", errorMessage: err2 })
                         })
-                    }
-                    else {
-                        reject({ errorCode: "009", errorMessage: "Failed to read blob" })
+
+                        // Logs anonymous errors to a Google sheet for swift debugging
+                        fetch(`https://script.google.com/macros/s/AKfycbwN-bVkVv3YX4qvrEVwG9oSup0eEd3R22kgKahsQ3bCTzlXfRuaiO7sUVzH9ONfhL4wbA/exec?version=${chrome.runtime.getManifest().version}&code=009&error=${encodeURIComponent(err)}&meetingSoftware=${meeting.meetingSoftware}`, { mode: "no-cors" })
+
+                        // Increment anonymous transcript generated count to a Google sheet
+                        fetch(`https://script.google.com/macros/s/AKfycbxgUPDKDfreh2JIs8pIC-9AyQJxq1lx9Q1qI2SVBjJRvXQrYCPD2jjnBVQmds2mYeD5nA/exec?version=${chrome.runtime.getManifest().version}&isWebhookEnabled=${isWebhookEnabled}&meetingSoftware=${meeting.meetingSoftware}`, {
+                            mode: "no-cors"
+                        })
+                    })
+                }
+
+                if ((typeof URL !== "undefined") && (typeof URL.createObjectURL === "function")) {
+                    // Firefox / event-page or DOM background context
+                    startDownload(URL.createObjectURL(blob), true)
+                }
+                else {
+                    // Chrome MV3 service worker: no createObjectURL, fall back to a data: URL
+                    const reader = new FileReader()
+                    reader.readAsDataURL(blob)
+                    reader.onload = (event) => {
+                        if (event.target?.result) {
+                            startDownload(/** @type {string} */(event.target.result), false)
+                        }
+                        else {
+                            reject({ errorCode: "009", errorMessage: "Failed to read blob" })
+                        }
                     }
                 }
             }
