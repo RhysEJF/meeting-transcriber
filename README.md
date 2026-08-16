@@ -1,7 +1,15 @@
 # TranscripTonic
-Simple Google Meet transcripts. Private and open source. 
-> Teams and Zoom transcripts in beta. <a href="https://github.com/vivek-nexus/transcriptonic/wiki/Zoom-and-Teams-beta-testing" target="_blank">Learn
-          more</a>.
+Simple Google Meet, Zoom, and Teams transcripts. Private and open source.
+
+## Supported Platforms
+
+| Platform | URL pattern | Notes |
+|---|---|---|
+| Google Meet | `https://meet.google.com/*` | On by default |
+| Zoom Web Client | `https://*.zoom.us/wc/*` | Opt-in. Desktop-app join links (`zoom.us/j/...`) are redirected to the web client via `rules.json` |
+| Microsoft Teams | `https://teams.microsoft.com/*`, `https://teams.live.com/*` | Opt-in |
+
+Enable Zoom/Teams from the extension popup — each platform's host permission is requested only when you turn it on.
 
 ![marquee-large](/assets/marquee-large.png)
 

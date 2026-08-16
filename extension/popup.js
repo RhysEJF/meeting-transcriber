@@ -9,6 +9,8 @@ window.onload = function () {
 
   // Platform Checkboxes
   const googleMeetToggle = /** @type {HTMLInputElement} */ (document.querySelector("#enable-google-meet"))
+  const teamsToggle = /** @type {HTMLInputElement} */ (document.querySelector("#enable-teams"))
+  const zoomToggle = /** @type {HTMLInputElement} */ (document.querySelector("#enable-zoom"))
 
   if (versionElement) {
     versionElement.innerHTML = `v${chrome.runtime.getManifest().version}`
@@ -62,7 +64,19 @@ window.onload = function () {
       chrome.runtime.sendMessage(message, (responseUntyped) => {
         const response = /** @type {ExtensionResponse} */ (responseUntyped)
         if (response.success) {
-          chrome.storage.sync.set({ wantGoogleMeet: element.checked }, function () { })
+          switch (platform) {
+            case "google_meet":
+              chrome.storage.sync.set({ wantGoogleMeet: element.checked }, function () { })
+              break
+            case "teams":
+              chrome.storage.sync.set({ wantTeams: element.checked }, function () { })
+              break
+            case "zoom":
+              chrome.storage.sync.set({ wantZoom: element.checked }, function () { })
+              break
+            default:
+              break
+          }
         }
         else {
           element.checked = !element.checked // Revert on failure
@@ -75,5 +89,11 @@ window.onload = function () {
   // Initialize Toggles
   if (googleMeetToggle) {
     syncPlatformStatus(googleMeetToggle, "google_meet")
+  }
+  if (teamsToggle) {
+    syncPlatformStatus(teamsToggle, "teams")
+  }
+  if (zoomToggle) {
+    syncPlatformStatus(zoomToggle, "zoom")
   }
 }
