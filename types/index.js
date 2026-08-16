@@ -58,7 +58,7 @@
  */
 
 /**
- * @typedef {"Google Meet" | "" | undefined} MeetingSoftware Google Meet or undefined.
+ * @typedef {"Google Meet" | "Zoom" | "Teams" | "" | undefined} MeetingSoftware Google Meet or Zoom or Teams or undefined.
  */
 /**
  * @typedef {number | "processing" | null} MeetingTabId tab id of the meeting tab, captured when meeting starts. A valid value or "processing" indicates that a meeting is in progress. Set to null once meeting ends and associated processing is complete.
@@ -91,6 +91,8 @@
  * @property {WebhookBodyType} webhookBodyType
  * @property {WebhookUrl} webhookUrl
  * @property {wantGoogleMeet} wantGoogleMeet
+ * @property {wantTeams} wantTeams
+ * @property {wantZoom} wantZoom
 */
 
 /**
@@ -110,6 +112,12 @@
  */
 /**
  * @typedef {boolean} WantGoogleMeet Indicates whether user explicitly opted in for Google Meet. Does not necessarily mean Google Meet is enabled for them. Only an indicator to re-inject content scripts between reloads.
+ */
+/**
+ * @typedef {boolean} WantTeams Indicates whether user explicitly opted in for Teams. Does not necessarily mean Teams is enabled for them. Only an indicator to re-inject content scripts between reloads.
+ */
+/**
+ * @typedef {boolean} WantZoom Indicates whether user explicitly opted in for Zoom. Does not necessarily mean Zoom is enabled for them. Only an indicator to re-inject content scripts between reloads.
  */
 
 
@@ -134,7 +142,7 @@
  */
 
 /**
- * @typedef {"google_meet"} Platform Google Meet platform identifier
+ * @typedef {"google_meet" | "teams" | "zoom"} Platform Platform identifier
  */
 
 // CONTENT SCRIPT ERRORS

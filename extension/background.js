@@ -18,6 +18,18 @@ const PLATFORM_CONFIGS = {
         js: ["content-google-meet.js"],
         matches: ["https://meet.google.com/*"],
         excludeMatches: ["https://meet.google.com/", "https://meet.google.com/landing"]
+    },
+    "zoom": {
+        id: "content-zoom",
+        js: ["content-zoom.js"],
+        matches: ["https://zoom.us/wc/*", "https://*.zoom.us/wc/*"],
+        excludeMatches: []
+    },
+    "teams": {
+        id: "content-teams",
+        js: ["content-teams.js"],
+        matches: ["https://teams.live.com/*", "https://teams.microsoft.com/*"],
+        excludeMatches: []
     }
 }
 
@@ -129,7 +141,10 @@ chrome.runtime.onMessage.addListener(function (messageUnTyped, sender, sendRespo
     }
 
     if (message.type === "get_platform_status") {
-        getContentScriptStatus("google_meet")
+        /** @type {Platform} */
+        let platform = message.platform || "google_meet"
+
+        getContentScriptStatus(platform)
             .then((status) => {
                 /** @type {ExtensionResponse} */
                 const response = {
@@ -147,10 +162,19 @@ chrome.runtime.onMessage.addListener(function (messageUnTyped, sender, sendRespo
     }
 
     if ((message.type === "enable_platform")) {
-        requestPlatformPermission("google_meet").then(() => {
-            registerContentScript("google_meet").then((result) => {
+        /** @type {Platform} */
+        let platform = message.platform || "google_meet"
+
+        requestPlatformPermission(platform).then(() => {
+            // After permissions are granted, register both the scripts and the redirect rule for zoom
+            const promises = [registerContentScript(platform)]
+            if (platform === "zoom") {
+                promises.push(registerZoomRedirect())
+            }
+
+            Promise.all(promises).then((results) => {
                 /** @type {ExtensionResponse} */
-                const response = { success: true, message: result }
+                const response = { success: true, message: results[0] }
                 sendResponse(response)
             }).catch((error) => {
                 const parsedError = /** @type {ErrorObject} */ (error)
@@ -170,9 +194,19 @@ chrome.runtime.onMessage.addListener(function (messageUnTyped, sender, sendRespo
     }
 
     if (message.type === "disable_platform") {
-        deregisterContentScript("google_meet").then((result) => {
+        /** @type {Platform} */
+        let platform = message.platform || "google_meet"
+
+        // To disable, we simply unregister the content scripts and any redirect rules
+        const promises = [deregisterContentScript(platform)]
+
+        if (platform === "zoom") {
+            promises.push(deregisterZoomRedirect())
+        }
+
+        Promise.all(promises).then((results) => {
             /** @type {ExtensionResponse} */
-            const response = { success: true, message: result }
+            const response = { success: true, message: results[0] }
             sendResponse(response)
         }).catch((error) => {
             const parsedError = /** @type {ErrorObject} */ (error)
@@ -413,7 +447,7 @@ function downloadTranscript(index, isWebhookEnabled) {
                 const timestamp = new Date(meeting.meetingStartTimestamp)
                 const formattedTimestamp = timestamp.toLocaleString("default", timeFormat).replace(/[\/:]/g, "-")
 
-                const prefix = "Google Meet transcript"
+                const prefix = meeting.meetingSoftware ? `${meeting.meetingSoftware} transcript` : "Transcript"
 
                 const fileName = `TranscripTonic/${prefix}-${sanitisedMeetingTitle} at ${formattedTimestamp} on.txt`
 
@@ -721,7 +755,7 @@ function requestPlatformPermission(platform) {
 
         chrome.permissions.request({
             origins: config.matches,
-            permissions: ["notifications"]
+            permissions: ["notifications", "declarativeNetRequestWithHostAccess"]
         }).then((granted) => {
             if (granted) {
                 resolve("Permissions granted")
@@ -826,7 +860,7 @@ function registerContentScript(platform, showNotification = true) {
                                                     type: "basic",
                                                     iconUrl: "icon.png",
                                                     title: "Enabled!",
-                                                    message: `Refresh any existing meeting pages`
+                                                    message: platform === "google_meet" ? `Refresh any existing meeting pages` : ` ${platform === "teams" ? `Join Teams meetings on the browser` : `Zoom meetings will automatically open in the browser`}. Refresh any existing pages.`
                                                 })
                                             }
                                         })
@@ -847,15 +881,68 @@ function registerContentScript(platform, showNotification = true) {
 }
 
 function reRegisterContentScripts() {
-    chrome.storage.sync.get(["wantGoogleMeet"], function (resultSyncUntyped) {
+    chrome.storage.sync.get(["wantGoogleMeet", "wantTeams", "wantZoom"], function (resultSyncUntyped) {
         const resultSync = /** @type {ResultSync} */ (resultSyncUntyped)
 
-        getPermissionStatus("google_meet").then((result) => {
-            if (result === "Enabled" && (resultSync.wantGoogleMeet !== false)) {
-                registerContentScript("google_meet", false)
-                    .catch((error) => {
-                        console.log(error)
-                    })
+        Promise.all([
+            getPermissionStatus("google_meet"),
+            getPermissionStatus("teams"),
+            getPermissionStatus("zoom")
+        ]).then((results) => {
+            const promises = []
+
+            // Register content scripts if permissions are available and if user has not explicitly opted out
+            if (results[0] === "Enabled" && (resultSync.wantGoogleMeet !== false)) {
+                promises.push(registerContentScript("google_meet", false))
+            }
+            if (results[1] === "Enabled" && (resultSync.wantTeams !== false)) {
+                promises.push(registerContentScript("teams", false))
+            }
+            if (results[2] === "Enabled" && (resultSync.wantZoom !== false)) {
+                promises.push(registerContentScript("zoom", false))
+                promises.push(registerZoomRedirect())
+            }
+
+            Promise.all(promises)
+                .catch((error) => {
+                    console.log(error)
+                })
+        })
+    })
+}
+
+function registerZoomRedirect() {
+    return new Promise((resolve, reject) => {
+        // Check if we have the host permission required for the redirect
+        chrome.permissions.contains({
+            origins: ["https://zoom.us/wc/*", "https://*.zoom.us/wc/*"]
+        }).then((hasHostPermission) => {
+            if (hasHostPermission) {
+                // Check if the ruleset is already enabled to avoid redundant updates
+                chrome.declarativeNetRequest.getEnabledRulesets().then((enabledRulesets) => {
+                    const rulesetId = "zoom_redirect"
+
+                    if (enabledRulesets.includes(rulesetId)) {
+                        console.log("Zoom redirect ruleset already active")
+                        resolve("Zoom redirect already active")
+                    }
+                    else {
+                        // Enable the ruleset
+                        chrome.declarativeNetRequest.updateEnabledRulesets({
+                            enableRulesetIds: [rulesetId]
+                        }).then(() => {
+                            console.log("Zoom redirect ruleset enabled successfully")
+                            resolve("Zoom redirect registered")
+                        }).catch((error) => {
+                            console.error("Failed to enable DNR ruleset:", error)
+                            reject("Failed to enable redirect ruleset")
+                        })
+                    }
+                })
+            }
+            else {
+                reject("Insufficient permissions")
+                return
             }
         })
     })
@@ -890,6 +977,31 @@ function deregisterContentScript(platform) {
                         })
                 }
             })
+    })
+}
+
+function deregisterZoomRedirect() {
+    return new Promise((resolve, reject) => {
+        const rulesetId = "zoom_redirect"
+
+        chrome.declarativeNetRequest.getEnabledRulesets().then((enabledRulesets) => {
+            if (!enabledRulesets.includes(rulesetId)) {
+                console.log("Zoom redirect ruleset already disabled")
+                resolve("Zoom redirect already disabled")
+            }
+            else {
+                // Disable the ruleset
+                chrome.declarativeNetRequest.updateEnabledRulesets({
+                    disableRulesetIds: [rulesetId]
+                }).then(() => {
+                    console.log("Zoom redirect ruleset disabled successfully")
+                    resolve("Zoom redirect deregistered")
+                }).catch((error) => {
+                    console.error("Failed to disable DNR ruleset:", error)
+                    reject("Failed to disable redirect ruleset")
+                })
+            }
+        })
     })
 }
 
